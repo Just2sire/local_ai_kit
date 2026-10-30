@@ -1,9 +1,14 @@
-
 enum ChunkingStrategy {
+  /// Découpe aux sauts de paragraphe, en fusionnant les paragraphes courts.
   paragraph,
+
+  /// Découpe à taille fixe, utile pour un texte sans paragraphes nets.
   fixedSize,
 }
 
+/// Découpe un texte en blocs de [targetChars] caractères au maximum.
+///
+/// Les tailles sont exprimées en caractères, pas en tokens.
 class TextChunker {
   const TextChunker({
     this.targetChars = 1800,
@@ -44,8 +49,8 @@ class TextChunker {
   List<String> _byParagraph(String text) {
     final paragraphs = text
         .split(RegExp(r'\n\s*\n'))
-        .map((p) => p.trim())
-        .where((p) => p.isNotEmpty);
+        .map((paragraph) => paragraph.trim())
+        .where((paragraph) => paragraph.isNotEmpty);
 
     final chunks = <String>[];
     var buffer = '';
@@ -57,16 +62,13 @@ class TextChunker {
     }
 
     for (final paragraph in paragraphs) {
-      // Un paragraphe trop long doit être découpé.
       if (paragraph.length > targetChars) {
         flush();
         chunks.addAll(_fixedSize(paragraph));
         continue;
       }
 
-      final candidate = buffer.isEmpty
-          ? paragraph
-          : '$buffer\n\n$paragraph';
+      final candidate = buffer.isEmpty ? paragraph : '$buffer\n\n$paragraph';
 
       if (candidate.length <= targetChars) {
         buffer = candidate;
@@ -76,24 +78,14 @@ class TextChunker {
       final previous = buffer;
       flush();
 
-      // Construire le nouveau chunk avec un overlap limité.
-      var prefix = '';
-      if (overlapChars > 0 && previous.length > overlapChars) {
-        prefix = previous.substring(previous.length - overlapChars);
-      } else if (overlapChars > 0) {
-        prefix = previous;
-      }
+      final prefix = switch (overlapChars) {
+        0 => '',
+        _ when previous.length <= overlapChars => previous,
+        _ => previous.substring(previous.length - overlapChars),
+      };
 
-      final combined = prefix.isEmpty
-          ? paragraph
-          : '$prefix\n\n$paragraph';
-
-      if (combined.length <= targetChars) {
-        buffer = combined;
-      } else {
-        // Le paragraphe est conservé, mais sans overlap si nécessaire.
-        buffer = paragraph;
-      }
+      final combined = prefix.isEmpty ? paragraph : '$prefix\n\n$paragraph';
+      buffer = combined.length <= targetChars ? combined : paragraph;
     }
 
     flush();
@@ -118,85 +110,3 @@ class TextChunker {
     return chunks;
   }
 }
-
-
-// enum ChunkingStrategy {
-//   paragraph,  // découpe aux sauts de paragraphe (\n\n) — le plus sémantique
-//   fixedSize,  // découpe à taille fixe — fallback si le texte est compact
-// }
-
-// class TextChunker {
-//   const TextChunker({
-//     this.targetChars = 1800,   // ≈ 400 tokens (1 token ≈ 4.5 chars)
-//     this.overlapChars = 200,   // ≈ 50 tokens de chevauchement
-//     this.strategy = ChunkingStrategy.paragraph,
-//   });
-
-//   final int targetChars;
-//   final int overlapChars;
-//   final ChunkingStrategy strategy;
-
-//   List<String> chunk(String text) {
-//     return switch (strategy) {
-//       ChunkingStrategy.paragraph => _byParagraph(text),
-//       ChunkingStrategy.fixedSize => _fixedSize(text),
-//     };
-//   }
-
-//   // Découpe sur les sauts de paragraphe, fusionne les trop petits,
-//   // re-découpe les trop grands
-//   List<String> _byParagraph(String text) {
-//     final rawParagraphs = text
-//         .split(RegExp(r'\n{2,}'))
-//         .map((p) => p.trim())
-//         .where((p) => p.isNotEmpty)
-//         .toList();
-
-//     final chunks = <String>[];
-//     final buffer = StringBuffer();
-
-//     for (final para in rawParagraphs) {
-//       // Paragraphe seul plus grand que la cible → le découper en fixedSize
-//       if (para.length > targetChars) {
-//         if (buffer.isNotEmpty) {
-//           chunks.add(buffer.toString().trim());
-//           buffer.clear();
-//         }
-//         chunks.addAll(_fixedSize(para));
-//         continue;
-//       }
-
-//       // Ajouter le paragraphe au buffer si ça tient encore
-//       if (buffer.length + para.length + 2 > targetChars && buffer.isNotEmpty) {
-//         chunks.add(buffer.toString().trim());
-//         // Overlap : on repart avec la fin du chunk précédent
-//         final prev = chunks.last;
-//         buffer.clear();
-//         if (overlapChars > 0 && prev.length > overlapChars) {
-//           buffer.write(prev.substring(prev.length - overlapChars));
-//           buffer.write('\n\n');
-//         }
-//       }
-
-//       buffer.write(para);
-//       buffer.write('\n\n');
-//     }
-
-//     if (buffer.isNotEmpty) chunks.add(buffer.toString().trim());
-//     return chunks;
-//   }
-
-//   // Découpe strictement par nombre de caractères avec overlap
-//   List<String> _fixedSize(String text) {
-//     final chunks = <String>[];
-//     int start = 0;
-
-//     while (start < text.length) {
-//       final end = (start + targetChars).clamp(0, text.length);
-//       chunks.add(text.substring(start, end).trim());
-//       start += targetChars - overlapChars;
-//     }
-
-//     return chunks;
-//   }
-// }

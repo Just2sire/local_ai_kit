@@ -6,23 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_ai_kit/local_ai_kit.dart';
 
 void main() {
-  group('EmbedTask', () {
-    test('apply prefixes correctly', () {
-      expect(
-        EmbedTask.query.apply('what is flutter?'),
-        'task: search query | text: what is flutter?',
-      );
-      expect(
-        EmbedTask.document.apply('flutter is a framework'),
-        'task: search result | text: flutter is a framework',
-      );
-      expect(
-        EmbedTask.code.apply('void main() {}'),
-        'task: code search | text: void main() {}',
-      );
-    });
-  });
-
   group('DocChunk', () {
     test('creates chunk with metadata', () {
       const chunk = DocChunk(
@@ -45,10 +28,29 @@ void main() {
     });
   });
 
+  group('LocalRag', () {
+    test('rejects operations before init', () {
+      final rag = LocalRag(const RagConfig());
+      expect(() => rag.search('question'), throwsStateError);
+      expect(() => rag.remove('id'), throwsStateError);
+    });
+  });
+
+  group('LocalLlm', () {
+    test('rejects generation before init', () async {
+      final llm = LocalLlm(systemPrompt: 'test');
+      await expectLater(llm.generate('prompt'), throwsStateError);
+      await expectLater(llm.stream('prompt').toList(), throwsStateError);
+    });
+  });
+
   group('TextChunker', () {
     test('splits by paragraphs', () {
       const chunker = TextChunker(targetChars: 50, overlapChars: 10);
-      final text = 'Premier paragraphe court.\n\nDeuxième paragraphe un peu plus long pour tester.\n\nTroisième paragraphe.';
+      final text =
+          'Premier paragraphe court.\n\n'
+          'Deuxième paragraphe un peu plus long pour tester.\n\n'
+          'Troisième paragraphe.';
       final chunks = chunker.chunk(text);
       expect(chunks.length, greaterThanOrEqualTo(2));
       expect(chunks.first.contains('Premier paragraphe court.'), isTrue);
@@ -60,9 +62,27 @@ void main() {
         overlapChars: 5,
         strategy: ChunkingStrategy.fixedSize,
       );
-      final text = 'Un texte continu sans saut de ligne qui dépasse la taille cible.';
+      final text =
+          'Un texte continu sans saut de ligne qui dépasse la taille cible.';
       final chunks = chunker.chunk(text);
       expect(chunks.length, greaterThan(1));
+    });
+
+    test('returns no chunk for blank text', () {
+      const chunker = TextChunker();
+      expect(chunker.chunk('   \n\n  '), isEmpty);
+    });
+
+    test('validates chunk configuration', () {
+      expect(
+        () => const TextChunker(targetChars: 0).chunk('texte'),
+        throwsArgumentError,
+      );
+      expect(
+        () =>
+            const TextChunker(targetChars: 10, overlapChars: 10).chunk('texte'),
+        throwsArgumentError,
+      );
     });
   });
 
@@ -122,13 +142,33 @@ void main() {
 </w:document>
 ''';
       final xmlBytes = utf8.encode(xml);
-      archive.addFile(ArchiveFile('word/document.xml', xmlBytes.length, xmlBytes));
+      archive.addFile(
+        ArchiveFile('word/document.xml', xmlBytes.length, xmlBytes),
+      );
       final zipBytes = ZipEncoder().encode(archive)!;
       await docxFile.writeAsBytes(zipBytes);
 
       final extracted = await extractTextFromFile(filePath: docxFile.path);
       expect(extracted, contains('Titre du document Word'));
       expect(extracted, contains('Contenu du paragraphe & suite.'));
+    });
+
+    test('extracts text from an uncompressed .pdf file', () async {
+      final pdfFile = File('${tempDir.path}/sample.pdf');
+      const pdf = '''
+%PDF-1.4
+1 0 obj
+<< /Length 44 >>
+stream
+BT /F1 12 Tf (Bonjour PDF) Tj ET
+endstream
+endobj
+%%EOF
+''';
+      await pdfFile.writeAsString(pdf, encoding: latin1);
+
+      final extracted = await extractTextFromFile(filePath: pdfFile.path);
+      expect(extracted, contains('Bonjour PDF'));
     });
   });
 }

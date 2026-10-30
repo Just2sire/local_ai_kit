@@ -1,123 +1,113 @@
-﻿import 'dart:convert';
+import 'dart:convert';
+
 import 'package:flutter_edge_ai_rag/flutter_edge_ai_rag.dart';
 import 'package:flutter_edge_ai_sqlite/flutter_edge_ai_sqlite.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../input/doc_chunk.dart';
-import '../input/embed_task.dart';
 import '../llm/local_llm.dart';
 import 'rag_config.dart';
 
-// Facade RAG on-device — encapsule flutter_edge_ai_rag
+/// Facade RAG on-device — encapsule `flutter_edge_ai_rag`.
+///
+/// Les préfixes de tâche d'embedding sont appliqués par
+/// [FlutterEdgeAiActiveEmbedder] : il faut donc transmettre le texte brut,
+/// sans préfixe ajouté manuellement.
 class LocalRag {
   LocalRag(this.config);
 
   final RagConfig config;
   RagIndex? _index;
 
+  bool get isInitialized => _index != null;
+
   Future<void> init() async {
-    final dir = await getApplicationDocumentsDirectory();
+    if (_index != null) return;
+
+    final directory = await getApplicationDocumentsDirectory();
     final rag = FlutterEdgeAiRag(providers: [SqliteVectorStoreProvider()]);
     final embedder = FlutterEdgeAiActiveEmbedder(
       profileId: config.embedderProfileId,
     );
+
     _index = await rag.open(
       spec: VectorStoreSpec(
         providerId: 'sqlite',
-        location: '${dir.path}/${config.dbName}',
+        location: '${directory.path}/${config.dbName}',
       ),
       embedder: embedder,
     );
   }
 
-  // Indexer un chunk texte
+  RagIndex get _requireIndex {
+    final index = _index;
+    if (index == null) {
+      throw StateError(
+        'LocalRag.init() doit être appelé avant toute opération.',
+      );
+    }
+    return index;
+  }
+
+  /// Indexe un chunk texte.
   Future<void> add(DocChunk chunk) async {
-    await _index!.add(
+    await _requireIndex.add(
       id: chunk.id,
-      document: EmbeddingInput.text(EmbedTask.document.apply(chunk.text)),
+      document: EmbeddingInput.text(chunk.text),
+      // Le texte stocké est le contenu brut : l'embedding porte déjà le
+      // préfixe de tâche, qui n'a pas sa place dans le contexte restitué.
+      content: chunk.text,
       metadata: chunk.metadata.isNotEmpty ? jsonEncode(chunk.metadata) : null,
     );
   }
 
-  // Indexer plusieurs chunks d'un coup
+  /// Indexe plusieurs chunks.
   Future<void> addAll(List<DocChunk> chunks) async {
-    for (final c in chunks) {
-      await add(c);
+    for (final chunk in chunks) {
+      await add(chunk);
     }
   }
 
-  // Supprimer un chunk par id
-  Future<void> remove(String id) => _index!.remove(id: id);
+  /// Supprime un chunk par id.
+  Future<void> remove(String id) => _requireIndex.remove(id: id);
 
-  // Recherche sémantique — renvoie les chunks les plus proches
+  /// Recherche sémantique — renvoie les chunks les plus proches.
   Future<List<RetrievalResult>> search(String query) {
-    return _index!.search(
-      query: EmbeddingInput.text(EmbedTask.query.apply(query)),
+    return _requireIndex.search(
+      query: EmbeddingInput.text(query),
       topK: config.topK,
     );
   }
 
-  // RAG complet : retrieval -> prompt -> génération
-  Future<String> queryWithLlm(LocalLlm llm, String question) async {
-    final results = await search(question);
-    final context = results
-        .map((r) => r.content.replaceFirst(EmbedTask.document.prefix, ''))
-        .join('\n\n---\n\n');
-
-    final prompt = '''Contexte :
+  String _buildPrompt(String question, List<RetrievalResult> results) {
+    final context = results.map((result) => result.content).join('\n\n---\n\n');
+    return '''Contexte :
 $context
 
 Question : $question
 Réponse :''';
-
-    return llm.generate(prompt);
   }
 
-  
-  // RAG complet en streaming, avec possibilité de réutiliser
-  // les résultats d'une recherche déjà effectuée.
+  /// RAG complet : retrieval -> prompt -> génération.
+  Future<String> queryWithLlm(LocalLlm llm, String question) async {
+    final results = await search(question);
+    return llm.generate(_buildPrompt(question, results));
+  }
+
+  /// RAG complet en streaming, avec possibilité de réutiliser
+  /// les résultats d'une recherche déjà effectuée.
   Stream<String> queryStreamWithLlm(
     LocalLlm llm,
     String question, {
     List<RetrievalResult>? results,
   }) async* {
     final retrieved = results ?? await search(question);
-
-    final context = retrieved
-        .map(
-          (r) => r.content.replaceFirst(
-            EmbedTask.document.prefix,
-            '',
-          ),
-        )
-        .join('\n\n---\n\n');
-
-    final prompt = '''Contexte :
-$context
-
-Question : $question
-Réponse :''';
-
-    yield* llm.stream(prompt);
+    yield* llm.stream(_buildPrompt(question, retrieved));
   }
 
-
-/*
-  // Stream version
-  Stream<String> queryStreamWithLlm(LocalLlm llm, String question) async* {
-    final results = await search(question);
-    final context = results
-        .map((r) => r.content.replaceFirst(EmbedTask.document.prefix, ''))
-        .join('\n\n---\n\n');
-
-    final prompt = '''Contexte :
-$context
-
-Question : $question
-Réponse :''';
-
-    yield* llm.stream(prompt);
+  Future<void> dispose() async {
+    final index = _index;
+    _index = null;
+    await index?.dispose();
   }
-*/
-  Future<void> dispose() => _index?.dispose() ?? Future.value();
 }

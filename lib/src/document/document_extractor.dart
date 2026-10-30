@@ -28,10 +28,7 @@ class FileException implements Exception {
 
 /// Extrait le texte d'un fichier sélectionné par l'utilisateur.
 /// Prend en charge les formats : .txt, .pdf, .docx (ainsi que .md, .json, .csv)
-Future<String> extractTextFromFile({
-  required String filePath,
-  TextChunker? chunker,
-}) async {
+Future<String> extractTextFromFile({required String filePath}) async {
   final file = File(filePath);
   final extension = path.extension(filePath).toLowerCase();
 
@@ -115,7 +112,9 @@ Future<String> _extractDocxText(File file) async {
 
     // Fallback : extraire tous les tags <w:t>
     final allTMatches = tRegex.allMatches(xml);
-    final allText = allTMatches.map((m) => _unescapeXml(m.group(1) ?? '')).join(' ');
+    final allText = allTMatches
+        .map((m) => _unescapeXml(m.group(1) ?? ''))
+        .join(' ');
     if (allText.trim().isNotEmpty) {
       return allText.trim();
     }
@@ -166,22 +165,28 @@ String _extractTextFromPdfBytes(Uint8List bytes) {
   final buffer = StringBuffer();
   final latin1Str = latin1.decode(bytes);
 
-  // Recherche de tous les streams : stream ... endstream
-  final streamRegex = RegExp(r'stream\r?\n', dotAll: true);
-  final endStreamRegex = RegExp(r'\r?\nendstream', dotAll: true);
+  // Recherche de tous les streams : stream ... endstream.
+  // `\b` évite de confondre le mot-clé `stream` avec la fin de `endstream`.
+  final streamRegex = RegExp(r'\bstream(?:\r\n|\r|\n)');
+  final endStreamRegex = RegExp(r'(?:\r\n|\r|\n)endstream');
 
   int searchStart = 0;
   while (true) {
-    final streamMatch = streamRegex.firstMatch(latin1Str.substring(searchStart));
+    final streamMatch = streamRegex.firstMatch(
+      latin1Str.substring(searchStart),
+    );
     if (streamMatch == null) break;
 
     final streamStartPos = searchStart + streamMatch.end;
-    final endMatch = endStreamRegex.firstMatch(latin1Str.substring(streamStartPos));
+    final endMatch = endStreamRegex.firstMatch(
+      latin1Str.substring(streamStartPos),
+    );
     if (endMatch == null) break;
 
     final streamEndPos = streamStartPos + endMatch.start;
 
-    // Vérifier les 200 caractères précédents pour voir si /FlateDecode est mentionné
+    // Vérifier les 300 caractères précédents pour voir si /FlateDecode est
+    // mentionné dans le dictionnaire du stream.
     final headerStart = (streamStartPos - 300).clamp(0, streamStartPos);
     final headerSnippet = latin1Str.substring(headerStart, streamStartPos);
     final isFlate = headerSnippet.contains('/FlateDecode');
@@ -194,12 +199,7 @@ String _extractTextFromPdfBytes(Uint8List bytes) {
         final decompressed = zlib.decode(rawStreamBytes);
         streamText = utf8.decode(decompressed, allowMalformed: true);
       } catch (_) {
-        try {
-          final decompressed = zlib.decode(rawStreamBytes);
-          streamText = latin1.decode(decompressed);
-        } catch (_) {
-          // ignore stream decoding error
-        }
+        // Flux compressé illisible : on l'ignore.
       }
     } else {
       streamText = latin1.decode(rawStreamBytes);
@@ -213,7 +213,8 @@ String _extractTextFromPdfBytes(Uint8List bytes) {
       }
     }
 
-    searchStart = streamEndPos + endMatch.end;
+    // Les positions de `endMatch` sont relatives à `streamStartPos`.
+    searchStart = streamStartPos + endMatch.end;
   }
 
   return buffer.toString();
@@ -270,30 +271,38 @@ String _cleanPdfString(String str) {
 /// Fallback pour extraire des séquences de caractères imprimables
 String _extractAsciiFallback(Uint8List bytes) {
   final buffer = StringBuffer();
-  int currentRun = 0;
+  var currentRun = 0;
   final runBuffer = StringBuffer();
 
-  for (final b in bytes) {
+  void flush() {
+    if (currentRun >= 8) {
+      final line = runBuffer.toString().trim();
+      // Filtrer les chaînes internes PDF
+      if (line.isNotEmpty &&
+          !line.startsWith('/') &&
+          !line.startsWith('%PDF') &&
+          !line.contains('endobj') &&
+          !line.contains('obj<<')) {
+        buffer.writeln(line);
+      }
+    }
+    currentRun = 0;
+    runBuffer.clear();
+  }
+
+  for (final byte in bytes) {
     // Caractères imprimables ASCII + accents latins fréquents
-    if ((b >= 32 && b <= 126) || b == 10 || b == 13 || (b >= 192 && b <= 255)) {
-      runBuffer.writeCharCode(b);
+    if ((byte >= 32 && byte <= 126) ||
+        byte == 10 ||
+        byte == 13 ||
+        (byte >= 192 && byte <= 255)) {
+      runBuffer.writeCharCode(byte);
       currentRun++;
     } else {
-      if (currentRun >= 8) {
-        final line = runBuffer.toString().trim();
-        // Filtrer les chaînes internes PDF
-        if (line.isNotEmpty &&
-            !line.startsWith('/') &&
-            !line.startsWith('%PDF') &&
-            !line.contains('endobj') &&
-            !line.contains('obj<<')) {
-          buffer.writeln(line);
-        }
-      }
-      currentRun = 0;
-      runBuffer.clear();
+      flush();
     }
   }
+  flush();
 
   return buffer.toString();
 }
@@ -312,7 +321,8 @@ Future<int> indexDocumentFromFile({
   int overlapChars = 200,
   void Function(int done, int total)? onProgress,
 }) async {
-  final actualIndexer = indexer ??
+  final actualIndexer =
+      indexer ??
       DocIndexer(
         chunker: TextChunker(
           targetChars: targetChars,

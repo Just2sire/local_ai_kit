@@ -1,23 +1,23 @@
 name: local_ai_kit
-description: "Pipeline RAG on-device — flutter_edge_ai wrapper."
+description: "Pipeline RAG on-device — wrapper autour de flutter_edge_ai."
 version: 0.0.1
-homepage:
+repository: https://github.com/Just2sire/local_ai_kit
 
 environment:
   sdk: ^3.13.4
-  flutter: ">=1.17.0"
+  flutter: ">=3.47.0"
 
 dependencies:
+  archive: ^3.6.1
+  file_picker: ^13.3.0
   flutter:
     sdk: flutter
   flutter_edge_ai: ^2.5.2
   flutter_edge_ai_litertlm: ^1.17.0
   flutter_edge_ai_rag: ^1.1.2
   flutter_edge_ai_sqlite: ^2.1.1
-  path_provider: ^2.1.6
-  file_picker: ^13.3.0
   path: ^1.9.0
-  archive: ^3.6.1
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:
