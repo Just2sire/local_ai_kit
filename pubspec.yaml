@@ -1,14 +1,21 @@
-name: local_ai_kit
-description: "Pipeline RAG on-device — wrapper autour de flutter_edge_ai."
+name: local_rag_kit
+description: "Pipeline RAG on-device pour Flutter : chunking, indexation SQLite, recherche sémantique et génération avec un modèle local."
 version: 0.0.1
 repository: https://github.com/Just2sire/local_ai_kit
+issue_tracker: https://github.com/Just2sire/local_ai_kit/issues
+topics:
+  - rag
+  - ai
+  - llm
+  - embeddings
+  - on-device
 
 environment:
   sdk: ^3.13.4
   flutter: ">=3.47.0"
 
 dependencies:
-  archive: ^3.6.1
+  archive: ^4.0.9
   file_picker: ^13.3.0
   flutter:
     sdk: flutter

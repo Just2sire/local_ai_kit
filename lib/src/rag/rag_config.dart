@@ -2,7 +2,7 @@ class RagConfig {
   const RagConfig({
     this.topK = 5,
     this.systemPrompt = 'Tu es un assistant utile et précis.',
-    this.dbName = 'local_ai_kit.db',
+    this.dbName = 'local_rag_kit.db',
     this.embedderProfileId = 'embeddinggemma-2-440m',
   });
 

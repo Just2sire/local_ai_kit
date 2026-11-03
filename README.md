@@ -1,6 +1,6 @@
-# local_ai_kit
+# local_rag_kit
 
-`local_ai_kit` est un package Flutter qui regroupe les briques nécessaires à un
+`local_rag_kit` est un package Flutter qui regroupe les briques nécessaires à un
 flux de génération augmentée par récupération (RAG) local : découpage de
 documents, index vectoriel SQLite, recherche sémantique et génération avec un
 modèle local. Il s’appuie sur les packages `flutter_edge_ai` et
@@ -35,7 +35,7 @@ transmis à `LocalRag`.
 Ajoutez le package à votre projet Flutter :
 
 ```sh
-flutter pub add local_ai_kit
+flutter pub add local_rag_kit
 ```
 
 Si le package n’est pas publié sur pub.dev, déclarez-le plutôt comme dépendance
@@ -47,7 +47,7 @@ Git ou chemin local dans `pubspec.yaml`.
 extrait son contenu et l’indexe automatiquement.
 
 ```dart
-import 'package:local_ai_kit/local_ai_kit.dart';
+import 'package:local_rag_kit/local_rag_kit.dart';
 
 Future<void> uploadAndIndexDocument() async {
   const config = RagConfig(
@@ -132,7 +132,7 @@ L’exemple suppose que les modèles nécessaires sont déjà disponibles et act
 `RagConfig.embedderProfileId` doit correspondre au profil d’embedding installé.
 
 ```dart
-import 'package:local_ai_kit/local_ai_kit.dart';
+import 'package:local_rag_kit/local_rag_kit.dart';
 
 Future<void> runLocalRag() async {
   const config = RagConfig(
@@ -176,7 +176,7 @@ Future<void> runLocalRag() async {
 }
 ```
 
-`LocalRag.init()` ouvre ou crée la base `local_ai_kit.db` dans le répertoire
+`LocalRag.init()` ouvre ou crée la base `local_rag_kit.db` dans le répertoire
 documents de l’application. Pour changer son nom ou le profil d’embedding,
 personnalisez `RagConfig`.
 
