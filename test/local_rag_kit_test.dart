@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:local_ai_kit/local_ai_kit.dart';
+import 'package:local_rag_kit/local_rag_kit.dart';
 
 void main() {
   group('DocChunk', () {
@@ -23,7 +23,7 @@ void main() {
     test('default configuration values', () {
       const config = RagConfig();
       expect(config.topK, 5);
-      expect(config.dbName, 'local_ai_kit.db');
+      expect(config.dbName, 'local_rag_kit.db');
       expect(config.embedderProfileId, 'embeddinggemma-2-440m');
     });
   });
@@ -90,7 +90,7 @@ void main() {
     late Directory tempDir;
 
     setUp(() {
-      tempDir = Directory.systemTemp.createTempSync('local_ai_kit_test_');
+      tempDir = Directory.systemTemp.createTempSync('local_rag_kit_test_');
     });
 
     tearDown(() {
@@ -145,7 +145,7 @@ void main() {
       archive.addFile(
         ArchiveFile('word/document.xml', xmlBytes.length, xmlBytes),
       );
-      final zipBytes = ZipEncoder().encode(archive)!;
+      final zipBytes = ZipEncoder().encode(archive);
       await docxFile.writeAsBytes(zipBytes);
 
       final extracted = await extractTextFromFile(filePath: docxFile.path);
